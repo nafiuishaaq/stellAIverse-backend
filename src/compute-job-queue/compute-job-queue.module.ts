@@ -5,6 +5,7 @@ import { EventEmitterModule } from "@nestjs/event-emitter";
 import { QueueService } from "./queue.service";
 import { ComputeJobProcessor } from "./compute-job.processor";
 import { QueueHealthIndicator } from "./compute-job-healt.indicators";
+import { QueueController } from "./compute-job-queue.controller";
 import { CacheModule } from "../cache/cache.module";
 import { RetryPolicyService } from "./retry-policy.service";
 import { DagModule } from "./dag/dag.module";
@@ -74,7 +75,7 @@ import { ProvenanceCacheInvalidationListener } from "./listeners/provenance-cach
     QueueMetricsService,
     ProvenanceCacheInvalidationListener,
   ],
-  controllers: [ProvenanceController],
+  controllers: [QueueController, ProvenanceController],
   exports: [QueueService, BullModule, CacheModule, DagModule, JobProvenanceService],
 })
 export class QueueModule {}

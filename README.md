@@ -124,6 +124,32 @@ The backend supports two authentication methods:
 
 All authentication endpoints use JWT tokens for session management with bcrypt password hashing for traditional auth.
 
+### Job Control API
+
+Fine-grained control over compute jobs with role-based access control:
+
+- `GET /queue/jobs/:id/status` - Get detailed job status (authenticated users)
+- `POST /queue/jobs/:id/pause` - Pause a queued job (operators/admins only)
+- `POST /queue/jobs/:id/resume` - Resume a paused job (operators/admins only)
+- `POST /queue/jobs/:id/cancel` - Cancel a job (operators/admins only)
+
+**Features:**
+- Real-time job state monitoring with progress tracking
+- Pause/resume capabilities for queued and delayed jobs
+- Safe cancellation with state validation
+- Role-based authorization (operator/admin required for control operations)
+- Comprehensive error handling and validation
+
+**Documentation:**
+- 📖 [Job Control API Documentation](docs/JOB_CONTROL_API.md) - Complete API reference
+- 🚀 [Quick Start Guide](docs/JOB_CONTROL_QUICK_START.md) - Get started in 5 minutes
+
+**Use Cases:**
+- Pause jobs during maintenance windows
+- Cancel long-running or stuck jobs
+- Monitor job progress in real-time
+- Implement custom job orchestration workflows
+
 Configuration & deployment
 --------------------------
 - Environment variables drive provider keys, DB endpoints, wallet signing keys, and feature flags.

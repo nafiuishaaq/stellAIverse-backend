@@ -194,6 +194,131 @@ export class QueueService {
   }
 
   /**
+   * Get detailed job status with metadata
+   */
+  async getDetailedJobStatus(jobId: string): Promise<any> {
+    const job = await this.getJob(jobId);
+    if (!job) {
+      return null;
+    }
+
+    const state = await job.getState();
+    
+    return {
+      id: job.id,
+      type: job.data.type,
+      state,
+      progress: job.progress || 0,
+      attemptsMade: job.attemptsMade,
+      createdAt: job.timestamp ? new Date(job.timestamp).toISOString() : undefined,
+      processedOn: job.processedOn ? new Date(job.processedOn).toISOString() : undefined,
+      finishedOn: job.finishedOn ? new Date(job.finishedOn).toISOString() : undefined,
+      result: state === 'completed' ? job.returnvalue : undefined,
+      failedReason: job.failedReason,
+      metadata: job.data.metadata,
+    };
+  }
+
+  /**
+   * Pause an individual job
+   */
+  async pauseJob(jobId: string): Promise<{ previousState: string; newState: string }> {
+    const job = await this.getJob(jobId);
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    const previousState = await job.getState();
+    
+    // Only allow pausing waiting or delayed jobs
+    if (previousState !== 'waiting' && previousState !== 'delayed') {
+      throw new Error(`Cannot pause job in state: ${previousState}. Only waiting or delayed jobs can be paused.`);
+    }
+
+    // Update metadata to mark as paused and move to delayed state
+    await job.update({
+      ...job.data,
+      metadata: {
+        ...job.data.metadata,
+        paused: true,
+        pausedAt: new Date().toISOString(),
+        previousState,
+      },
+    });
+
+    // Move to delayed state with a very long delay (effectively paused)
+    const delay = Date.now() + 365 * 24 * 60 * 60 * 1000; // 1 year delay
+    await (job as any).moveToDelayed(delay, true);
+
+    this.logger.log(`Job ${jobId} paused (previous state: ${previousState})`);
+    
+    return { previousState, newState: 'paused' };
+  }
+
+  /**
+   * Resume a paused job
+   */
+  async resumeJob(jobId: string): Promise<{ previousState: string; newState: string }> {
+    const job = await this.getJob(jobId);
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    const isPaused = job.data.metadata?.paused;
+    if (!isPaused) {
+      throw new Error(`Job ${jobId} is not paused`);
+    }
+
+    const previousState = job.data.metadata?.previousState || 'delayed';
+    
+    // Promote the job back to waiting state
+    await job.promote();
+    
+    // Update metadata to mark as resumed
+    await job.update({
+      ...job.data,
+      metadata: {
+        ...job.data.metadata,
+        paused: false,
+        resumedAt: new Date().toISOString(),
+        previousState: undefined,
+      },
+    });
+
+    this.logger.log(`Job ${jobId} resumed (returning to state: ${previousState})`);
+    
+    return { previousState: 'paused', newState: 'waiting' };
+  }
+
+  /**
+   * Cancel a job (remove it from queue)
+   */
+  async cancelJob(jobId: string): Promise<{ previousState: string }> {
+    const job = await this.getJob(jobId);
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    const previousState = await job.getState();
+    
+    // Cannot cancel completed jobs
+    if (previousState === 'completed') {
+      throw new Error(`Cannot cancel completed job ${jobId}`);
+    }
+
+    // If job is active, we need to handle it differently
+    if (previousState === 'active') {
+      this.logger.warn(`Attempting to cancel active job ${jobId}. This may not stop execution immediately.`);
+    }
+
+    await job.remove();
+    
+    this.logger.log(`Job ${jobId} cancelled (was in state: ${previousState})`);
+    
+    return { previousState };
+  }
+
+  /**
    * Remove job from queue
    */
   async removeJob(jobId: string): Promise<void> {
