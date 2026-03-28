@@ -6,6 +6,8 @@ import {
   UpdateDateColumn,
   Index,
   OneToMany,
+  ManyToOne,
+  JoinColumn,
 } from "typeorm";
 import { ProvenanceRecord } from "../../audit/entities/provenance-record.entity";
 import { Wallet } from "../../auth/entities/wallet.entity";
@@ -62,4 +64,18 @@ export class User {
    */
   @OneToMany(() => Wallet, (wallet) => wallet.user)
   wallets: Wallet[];
+
+  @Column({ unique: true, nullable: true })
+  @Index()
+  referralCode: string | null;
+
+  @Column({ nullable: true })
+  referredById: string | null;
+
+  @ManyToOne(() => User, (user) => user.referrals)
+  @JoinColumn({ name: "referredById" })
+  referredBy: User | null;
+
+  @OneToMany(() => User, (user) => user.referredBy)
+  referrals: User[];
 }

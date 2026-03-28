@@ -10,6 +10,8 @@ import * as bcrypt from "bcrypt";
 import { JwtService } from "@nestjs/jwt";
 import { User } from "../user/entities/user.entity";
 import { RegisterDto, LoginDto } from "./dto/auth.dto";
+import { RewardService } from "../referral/reward.service";
+import { RewardTrigger } from "../referral/reward.entity";
 
 @Injectable()
 export class AuthService {
@@ -17,12 +19,13 @@ export class AuthService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly jwtService: JwtService,
+    private readonly rewardService: RewardService,
   ) {}
 
   async register(
     registerDto: RegisterDto,
   ): Promise<{ token: string; user: Partial<User> }> {
-    const { email, password, username } = registerDto;
+    const { email, password, username, referralCode } = registerDto;
 
     // Check if user already exists
     const existingUser = await this.userRepository.findOne({
@@ -42,16 +45,40 @@ export class AuthService {
     const saltRounds = 12;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
+    // Generate unique referral code for the new user
+    const userReferralCode = await this.rewardService.generateUniqueReferralCode();
+
+    // Check if a referral code was provided
+    let referredBy: User | null = null;
+    if (referralCode) {
+      referredBy = await this.userRepository.findOne({
+        where: { referralCode: referralCode.toUpperCase() },
+      });
+      if (!referredBy) {
+        throw new BadRequestException("Invalid referral code");
+      }
+    }
+
     // Create user
     const user = this.userRepository.create({
       email,
       password: hashedPassword,
       username,
       walletAddress: `email_${email}`, // Generate a pseudo wallet address for email users
-      emailVerified: false, // Could implement email verification later
+      emailVerified: false,
+      referralCode: userReferralCode,
+      referredBy: referredBy || undefined,
     });
 
     await this.userRepository.save(user);
+
+    // Trigger reward logic if referred
+    if (user.referredById) {
+      // We don't await this to keep registration fast, but in many cases we might want to
+      this.rewardService.handleTrigger(RewardTrigger.REGISTRATION, user.id).catch(err => {
+        console.error("Failed to trigger registration reward", err);
+      });
+    }
 
     // Generate JWT token
     const payload = {
@@ -68,6 +95,7 @@ export class AuthService {
         email: user.email,
         username: user.username,
         role: user.role,
+        referralCode: user.referralCode,
       },
     };
   }
@@ -111,6 +139,7 @@ export class AuthService {
         email: user.email,
         username: user.username,
         role: user.role,
+        referralCode: user.referralCode,
       },
     };
   }
@@ -129,6 +158,7 @@ export class AuthService {
         email: user.email,
         username: user.username,
         role: user.role,
+        referralCode: user.referralCode,
       },
     };
   }

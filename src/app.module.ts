@@ -20,6 +20,7 @@ import { HealthModule } from "./health/health.module";
 import { QuotaModule } from "./quota/quota.module";
 import { WebSocketModule } from "./websocket/websocket.module";
 import { ObservabilityModule } from "./observability/observability.module";
+import { ReferralModule } from "./referral/referral.module";
 
 import { User } from "./user/entities/user.entity";
 import { EmailVerification } from "./auth/entities/email-verification.entity";
@@ -29,6 +30,7 @@ import { AgentEvent } from "./audit/entities/agent-event.entity";
 import { ComputeResult } from "./audit/entities/compute-result.entity";
 import { ProvenanceRecord } from "./audit/entities/provenance-record.entity";
 import { Wallet } from "./auth/entities/wallet.entity";
+import { ReferralReward } from "./referral/reward.entity";
 
 import { QuotaGuard } from "./common/guard/quota.guard";
 import { SubmissionVerifierService } from "./oracle/submission-verifier.service";
@@ -65,6 +67,7 @@ import { SubmissionVerifierService } from "./oracle/submission-verifier.service"
             ComputeResult,
             ProvenanceRecord,
             Wallet,
+            ReferralReward,
           ],
           synchronize: !isProduction,
           logging: isProduction ? ["error"] : ["error", "warn", "schema"],
@@ -95,6 +98,7 @@ import { SubmissionVerifierService } from "./oracle/submission-verifier.service"
     OracleModule,
     HealthModule,
     QuotaModule,
+    ReferralModule,
   ],
 
   controllers: [AppController],

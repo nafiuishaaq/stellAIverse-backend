@@ -24,11 +24,13 @@ import { StrategyAuthGuard } from "./guards/strategy-auth.guard";
 import { User } from "../user/entities/user.entity";
 import { EmailVerification } from "./entities/email-verification.entity";
 import { Wallet } from "./entities/wallet.entity";
+import { ReferralModule } from "../referral/referral.module";
 
 @Module({
   imports: [
     ConfigModule,
     PassportModule,
+    ReferralModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: "24h" },
