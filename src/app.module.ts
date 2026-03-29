@@ -21,7 +21,7 @@ import { QuotaModule } from "./quota/quota.module";
 import { ReferralModule } from "./referral/referral.module";
 import { WebSocketModule } from "./websocket/websocket.module";
 import { ObservabilityModule } from "./observability/observability.module";
-import { ReferralModule } from "./referral/referral.module";
+import { PortfolioModule } from "./portfolio/portfolio.module";
 
 import { User } from "./user/entities/user.entity";
 import { EmailVerification } from "./auth/entities/email-verification.entity";
@@ -33,6 +33,14 @@ import { ProvenanceRecord } from "./audit/entities/provenance-record.entity";
 import { Wallet } from "./auth/entities/wallet.entity";
 import { ReferralReward } from "./referral/reward.entity";
 import { Referral } from "./referral/entities/referral.entity";
+// Portfolio entities
+import { Portfolio } from "./portfolio/entities/portfolio.entity";
+import { PortfolioAsset } from "./portfolio/entities/portfolio-asset.entity";
+import { RiskProfile } from "./portfolio/entities/risk-profile.entity";
+import { OptimizationHistory } from "./portfolio/entities/optimization-history.entity";
+import { RebalancingEvent } from "./portfolio/entities/rebalancing-event.entity";
+import { PerformanceMetric } from "./portfolio/entities/performance-metric.entity";
+import { BacktestResult } from "./portfolio/entities/backtest-result.entity";
 
 import { QuotaGuard } from "./common/guard/quota.guard";
 import { SubmissionVerifierService } from "./oracle/submission-verifier.service";
@@ -71,6 +79,13 @@ import { SubmissionVerifierService } from "./oracle/submission-verifier.service"
             Wallet,
             ReferralReward,
             Referral,
+            Portfolio,
+            PortfolioAsset,
+            RiskProfile,
+            OptimizationHistory,
+            RebalancingEvent,
+            PerformanceMetric,
+            BacktestResult,
           ],
           synchronize: !isProduction,
           logging: isProduction ? ["error"] : ["error", "warn", "schema"],
@@ -95,6 +110,7 @@ import { SubmissionVerifierService } from "./oracle/submission-verifier.service"
     RecommendationModule,
     ComputeModule,
     WebSocketModule,
+    PortfolioModule,
     ObservabilityModule,
     IndexerModule,
     AuditModule,
