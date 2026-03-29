@@ -25,6 +25,8 @@ import { CrossChainModule } from "./cross-chain/cross-chain.module";
 import { PricePredictionModule } from "./price-prediction/price-prediction.module";
 import { RiskManagementModule } from "./risk-management/risk-management.module";
 import { SocialTradingModule } from "./social-trading/social-trading.module";
+import { PortfolioModule } from "./portfolio/portfolio.module";
+import { DeFiModule } from "./defi/defi.module";
 
 import { User } from "./user/entities/user.entity";
 import { EmailVerification } from "./auth/entities/email-verification.entity";
@@ -36,6 +38,21 @@ import { ProvenanceRecord } from "./audit/entities/provenance-record.entity";
 import { Wallet } from "./auth/entities/wallet.entity";
 import { ReferralReward } from "./referral/reward.entity";
 import { Referral } from "./referral/entities/referral.entity";
+// Portfolio entities
+import { Portfolio } from "./portfolio/entities/portfolio.entity";
+import { PortfolioAsset } from "./portfolio/entities/portfolio-asset.entity";
+import { RiskProfile } from "./portfolio/entities/risk-profile.entity";
+import { OptimizationHistory } from "./portfolio/entities/optimization-history.entity";
+import { RebalancingEvent } from "./portfolio/entities/rebalancing-event.entity";
+import { PerformanceMetric } from "./portfolio/entities/performance-metric.entity";
+import { BacktestResult } from "./portfolio/entities/backtest-result.entity";
+
+// DeFi entities
+import { DeFiPosition } from "./defi/entities/defi-position.entity";
+import { DeFiYieldRecord } from "./defi/entities/defi-yield-record.entity";
+import { DeFiTransaction } from "./defi/entities/defi-transaction.entity";
+import { DeFiYieldStrategy } from "./defi/entities/defi-yield-strategy.entity";
+import { DeFiRiskAssessment } from "./defi/entities/defi-risk-assessment.entity";
 
 import { QuotaGuard } from "./common/guard/quota.guard";
 import { SubmissionVerifierService } from "./oracle/submission-verifier.service";
@@ -74,6 +91,18 @@ import { SubmissionVerifierService } from "./oracle/submission-verifier.service"
             Wallet,
             ReferralReward,
             Referral,
+            Portfolio,
+            PortfolioAsset,
+            RiskProfile,
+            OptimizationHistory,
+            RebalancingEvent,
+            PerformanceMetric,
+            BacktestResult,
+            DeFiPosition,
+            DeFiYieldRecord,
+            DeFiTransaction,
+            DeFiYieldStrategy,
+            DeFiRiskAssessment,
           ],
           synchronize: !isProduction,
           logging: isProduction ? ["error"] : ["error", "warn", "schema"],
@@ -98,6 +127,8 @@ import { SubmissionVerifierService } from "./oracle/submission-verifier.service"
     RecommendationModule,
     ComputeModule,
     WebSocketModule,
+    PortfolioModule,
+    DeFiModule,
     ObservabilityModule,
     IndexerModule,
     AuditModule,
