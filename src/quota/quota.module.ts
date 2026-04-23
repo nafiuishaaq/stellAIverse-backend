@@ -6,11 +6,12 @@ import { PolicyController } from "./policy.controller";
 import { PolicyService } from "./policy.service";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { QuotaPolicy } from "./policy.entity";
+import { DynamicRateLimitScalingService } from "./dynamic-rate-limit-scaling.service";
 
 @Module({
   imports: [ConfigModule, TypeOrmModule.forFeature([QuotaPolicy])],
-  providers: [RateLimiterService, PolicyService],
+  providers: [RateLimiterService, PolicyService, DynamicRateLimitScalingService],
   controllers: [QuotaController, PolicyController],
-  exports: [RateLimiterService, PolicyService],
+  exports: [RateLimiterService, PolicyService, DynamicRateLimitScalingService],
 })
 export class QuotaModule {}

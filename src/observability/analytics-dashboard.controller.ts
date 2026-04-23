@@ -16,6 +16,7 @@ import { Roles } from '../common/guard/roles.decorator';
 import { UserRole } from '../user/entities/user.entity';
 import { AlertRule, AnalyticsDashboardService } from './analytics-dashboard.service';
 import { MetricsService } from './metrics.service';
+import { DynamicRateLimitScalingService } from '../quota/dynamic-rate-limit-scaling.service';
 
 @Controller('admin/analytics')
 @UseGuards(RolesGuard)
@@ -24,6 +25,7 @@ export class AnalyticsDashboardController {
   constructor(
     private readonly analytics: AnalyticsDashboardService,
     private readonly metrics: MetricsService,
+    private readonly dynamicScaling: DynamicRateLimitScalingService,
   ) {}
 
   /**
@@ -270,6 +272,35 @@ export class AnalyticsDashboardController {
       removed: this.analytics.removeUserOverride(userId),
       userId,
     };
+  }
+
+  @Get('scaling/status')
+  async getScalingStatus() {
+    return this.dynamicScaling.getStatus();
+  }
+
+  @Get('scaling/decisions')
+  async getScalingDecisions(@Query('limit') limit = '100') {
+    const parsed = Math.max(1, Math.min(1000, Number(limit) || 100));
+    return this.dynamicScaling.getDecisionLogs(parsed);
+  }
+
+  @Post('scaling/manual-override')
+  async setScalingManualOverride(
+    @Body()
+    body: {
+      enabled: boolean;
+      multiplier?: number;
+      reason?: string;
+    },
+  ) {
+    const adminId = 'admin-user-id';
+    return this.dynamicScaling.setManualOverride({
+      enabled: Boolean(body.enabled),
+      multiplier: Number(body.multiplier ?? 1),
+      reason: body.reason || 'manual scaling control',
+      adminId,
+    });
   }
 
   /**

@@ -5,9 +5,11 @@ import { AnalyticsDashboardController } from "./analytics-dashboard.controller";
 import { ObservabilityMiddleware } from "./observability.middleware";
 import { MetricsService } from "./metrics.service";
 import { AnalyticsDashboardService } from "./analytics-dashboard.service";
+import { QuotaModule } from "../quota/quota.module";
 
 @Module({
   imports: [
+    QuotaModule,
     TypeOrmModule.forFeature([]), // Add entities as needed
   ],
   controllers: [MetricsController, AnalyticsDashboardController],

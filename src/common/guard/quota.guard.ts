@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { RateLimiterService } from "../../quota/rate-limiter.service";
+import { DynamicRateLimitScalingService } from "../../quota/dynamic-rate-limit-scaling.service";
 import { AnalyticsDashboardService } from "../../observability/analytics-dashboard.service";
 import { MetricsService } from "../../observability/metrics.service";
 import {
@@ -21,6 +22,8 @@ export class QuotaGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly rateLimiterService: RateLimiterService,
+    @Optional()
+    private readonly dynamicScaling?: DynamicRateLimitScalingService,
     @Optional() private readonly analytics?: AnalyticsDashboardService,
     @Optional() private readonly metrics?: MetricsService,
   ) {}
@@ -44,16 +47,67 @@ export class QuotaGuard implements CanActivate {
     const baseWindowMs = options.windowMs ?? levelConfig.windowMs;
     const baseBurst = options.burst ?? levelConfig.burst;
 
-    const control = this.analytics?.getEffectiveControl(
-      request.user?.id,
+    const endpoint = request.route?.path || request.originalUrl || request.url || "unknown";
+    const userId = String(request.user?.id || trackerKey);
+    const userTier = request.user?.tier || options.level || "unknown";
+    const policy = options.level || "custom";
+
+    const dynamic = this.dynamicScaling?.getAdjustment({
+      key: trackerKey,
+      userId,
+      endpoint,
+      policy,
       baseLimit,
       baseWindowMs,
       baseBurst,
+    });
+
+    const dynamicLimit = dynamic?.limit ?? baseLimit;
+    const dynamicWindowMs = dynamic?.windowMs ?? baseWindowMs;
+    const dynamicBurst = dynamic?.burst ?? baseBurst;
+
+    if (dynamic) {
+      const direction =
+        dynamic.multiplier > 1.01 ? "up" : dynamic.multiplier < 0.99 ? "down" : "stable";
+      this.metrics?.rateLimitScalingDecisions.inc({
+        policy,
+        endpoint,
+        direction,
+        predicted_burst: String(dynamic.predictedBurst),
+      });
+      this.metrics?.rateLimitScalingMultiplier.set(
+        {
+          policy,
+          endpoint,
+        },
+        dynamic.multiplier,
+      );
+      this.metrics?.rateLimitPredictionConfidence.set(
+        {
+          policy,
+          endpoint,
+        },
+        dynamic.confidence,
+      );
+      this.metrics?.rateLimitPredictionLatency.observe(
+        {
+          policy,
+          endpoint,
+        },
+        dynamic.predictionLatencyMs,
+      );
+    }
+
+    const control = this.analytics?.getEffectiveControl(
+      request.user?.id,
+      dynamicLimit,
+      dynamicWindowMs,
+      dynamicBurst,
     );
 
-    const limit = control?.limit ?? baseLimit;
-    const windowMs = control?.windowMs ?? baseWindowMs;
-    const burst = control?.burst ?? baseBurst;
+    const limit = control?.limit ?? dynamicLimit;
+    const windowMs = control?.windowMs ?? dynamicWindowMs;
+    const burst = control?.burst ?? dynamicBurst;
 
     const startedAt = Date.now();
 
@@ -65,10 +119,6 @@ export class QuotaGuard implements CanActivate {
     );
 
     const decisionMs = Date.now() - startedAt;
-    const endpoint = request.route?.path || request.originalUrl || request.url || "unknown";
-    const userId = request.user?.id || trackerKey;
-    const userTier = request.user?.tier || options.level || "unknown";
-    const policy = options.level || "custom";
 
     this.metrics?.rateLimitHits.inc({ policy, user_tier: userTier, endpoint });
     this.metrics?.rateLimitCurrentUsage.set(
@@ -96,6 +146,20 @@ export class QuotaGuard implements CanActivate {
         user_tier: userTier,
       });
     }
+
+    this.dynamicScaling?.recordFeedback({
+      context: {
+        key: trackerKey,
+        userId,
+        endpoint,
+        policy,
+        baseLimit,
+        baseWindowMs,
+        baseBurst,
+      },
+      allowed: result.allowed,
+      remaining: result.remaining,
+    });
 
     this.analytics?.recordRateLimitDecision({
       key: trackerKey,

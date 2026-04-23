@@ -29,6 +29,10 @@ export class MetricsService {
   public readonly rateLimitResetTime: Gauge<string>;
   public readonly throttlingEvents: Counter<string>;
   public readonly burstEvents: Counter<string>;
+  public readonly rateLimitScalingDecisions: Counter<string>;
+  public readonly rateLimitScalingMultiplier: Gauge<string>;
+  public readonly rateLimitPredictionLatency: Histogram<string>;
+  public readonly rateLimitPredictionConfidence: Gauge<string>;
 
   // 💰 Premium Tier Metrics
   public readonly premiumTierUsage: Counter<string>;
@@ -128,6 +132,35 @@ export class MetricsService {
       name: "burst_events_total",
       help: "Total number of burst traffic events",
       labelNames: ["policy", "user_tier", "duration"],
+      registers: [this.registry],
+    });
+
+    this.rateLimitScalingDecisions = new Counter({
+      name: "rate_limit_scaling_decisions_total",
+      help: "Total number of dynamic scaling decisions",
+      labelNames: ["policy", "endpoint", "direction", "predicted_burst"],
+      registers: [this.registry],
+    });
+
+    this.rateLimitScalingMultiplier = new Gauge({
+      name: "rate_limit_scaling_multiplier",
+      help: "Current dynamic scaling multiplier",
+      labelNames: ["policy", "endpoint"],
+      registers: [this.registry],
+    });
+
+    this.rateLimitPredictionLatency = new Histogram({
+      name: "rate_limit_prediction_latency_ms",
+      help: "Prediction latency for dynamic rate scaling in milliseconds",
+      labelNames: ["policy", "endpoint"],
+      buckets: [0.1, 0.5, 1, 2, 5, 10, 20, 50],
+      registers: [this.registry],
+    });
+
+    this.rateLimitPredictionConfidence = new Gauge({
+      name: "rate_limit_prediction_confidence",
+      help: "Prediction confidence for dynamic scaling decisions",
+      labelNames: ["policy", "endpoint"],
       registers: [this.registry],
     });
 
