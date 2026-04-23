@@ -143,4 +143,37 @@ describe("PremiumFeatureBonusService", () => {
     expect(policy.feature).toBe("oracle");
     expect(service.getOperationLogs(20).length).toBeGreaterThan(0);
   });
+
+  it("supports bulk boost allocation and revocation", () => {
+    const allocation = service.bulkAllocateBoosts(
+      [
+        {
+          userId: "u5",
+          feature: "compute",
+          campaignId: "campaign-1",
+          durationMinutes: 20,
+          extraLimit: 25,
+          source: "campaign",
+          reason: "campaign:campaign-1",
+        },
+        {
+          userId: "u6",
+          feature: "portfolio",
+          durationMinutes: 30,
+          extraLimit: 30,
+          source: "admin",
+        },
+      ],
+      "admin",
+    );
+
+    expect(allocation.succeeded).toBe(2);
+
+    const revoke = service.bulkRevokeBoosts(
+      allocation.boosts.map((boost) => boost.id),
+      "admin",
+    );
+
+    expect(revoke.removed).toBe(2);
+  });
 });

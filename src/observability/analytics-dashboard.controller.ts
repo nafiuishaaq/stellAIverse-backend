@@ -18,6 +18,7 @@ import { AlertRule, AnalyticsDashboardService } from './analytics-dashboard.serv
 import { MetricsService } from './metrics.service';
 import { DynamicRateLimitScalingService } from '../quota/dynamic-rate-limit-scaling.service';
 import { PremiumFeatureBonusService } from '../quota/premium-feature-bonus.service';
+import { RewardAnalyticsService } from './reward-analytics.service';
 
 @Controller('admin/analytics')
 @UseGuards(RolesGuard)
@@ -28,6 +29,7 @@ export class AnalyticsDashboardController {
     private readonly metrics: MetricsService,
     private readonly dynamicScaling: DynamicRateLimitScalingService,
     private readonly premiumBonus: PremiumFeatureBonusService,
+    private readonly rewardAnalytics: RewardAnalyticsService,
   ) {}
 
   /**
@@ -409,6 +411,128 @@ export class AnalyticsDashboardController {
       body.reason || 'manual update',
       'admin-user-id',
     );
+  }
+
+  @Get('rewards/dashboard')
+  async getRewardsDashboard(@Query('timeRange') timeRange: '1h' | '24h' | '7d' | '30d' = '24h') {
+    return this.rewardAnalytics.getDashboardOverview(timeRange);
+  }
+
+  @Get('rewards/effectiveness')
+  async getRewardEffectiveness(@Query('timeRange') timeRange: '1h' | '24h' | '7d' | '30d' = '24h') {
+    return this.rewardAnalytics.getRewardEffectiveness(timeRange);
+  }
+
+  @Get('rewards/engagement')
+  async getRewardEngagement(@Query('timeRange') timeRange: '1h' | '24h' | '7d' | '30d' = '24h') {
+    return this.rewardAnalytics.getUserEngagementMetrics(timeRange);
+  }
+
+  @Get('rewards/campaigns')
+  async getRewardCampaignPerformance(
+    @Query('timeRange') timeRange: '1h' | '24h' | '7d' | '30d' = '7d',
+  ) {
+    return this.rewardAnalytics.getCampaignPerformance(timeRange);
+  }
+
+  @Get('rewards/predictive')
+  async getRewardPredictive(@Query('timeRange') timeRange: '1h' | '24h' | '7d' | '30d' = '30d') {
+    return this.rewardAnalytics.getPredictiveAnalytics(timeRange);
+  }
+
+  @Post('rewards/reports/generate')
+  async generateRewardReport(
+    @Body()
+    body: {
+      name: string;
+      timeRange?: '1h' | '24h' | '7d' | '30d';
+      includeSections?: Array<'effectiveness' | 'engagement' | 'campaigns' | 'operations' | 'predictive'>;
+      anonymizeUsers?: boolean;
+    },
+  ) {
+    return this.rewardAnalytics.generateReport({
+      name: body.name || `reward-report-${Date.now()}`,
+      timeRange: body.timeRange || '24h',
+      includeSections: body.includeSections,
+      anonymizeUsers: body.anonymizeUsers,
+    });
+  }
+
+  @Get('rewards/reports/export/:reportId')
+  async exportRewardReport(
+    @Param('reportId') reportId: string,
+    @Query('format') format: 'json' | 'csv' = 'json',
+  ) {
+    return this.rewardAnalytics.exportReport(reportId, format);
+  }
+
+  @Post('rewards/reports/schedules')
+  async createRewardReportSchedule(
+    @Body()
+    body: {
+      name: string;
+      cron: string;
+      format?: 'json' | 'csv';
+      recipients?: string[];
+      enabled?: boolean;
+      request: {
+        name: string;
+        timeRange: '1h' | '24h' | '7d' | '30d';
+        includeSections?: Array<'effectiveness' | 'engagement' | 'campaigns' | 'operations' | 'predictive'>;
+        anonymizeUsers?: boolean;
+      };
+    },
+  ) {
+    return this.rewardAnalytics.scheduleReport({
+      name: body.name,
+      cron: body.cron,
+      format: body.format || 'json',
+      recipients: body.recipients || [],
+      enabled: body.enabled ?? true,
+      createdBy: 'admin-user-id',
+      request: body.request,
+    });
+  }
+
+  @Get('rewards/reports/schedules')
+  async getRewardReportSchedules() {
+    return this.rewardAnalytics.listSchedules();
+  }
+
+  @Delete('rewards/reports/schedules/:id')
+  async deleteRewardReportSchedule(@Param('id') scheduleId: string) {
+    return this.rewardAnalytics.deleteSchedule(scheduleId);
+  }
+
+  @Post('rewards/boosts/bulk-allocate')
+  async bulkAllocateRewardBoosts(
+    @Body()
+    body: {
+      items: Array<{
+        userId: string;
+        feature: string;
+        campaignId?: string;
+        bonusMultiplier?: number;
+        extraLimit?: number;
+        extraBurst?: number;
+        durationMinutes: number;
+        source?: 'admin' | 'referral' | 'campaign' | 'system';
+        reason?: string;
+      }>;
+    },
+  ) {
+    return this.premiumBonus.bulkAllocateBoosts(body.items || [], 'admin-user-id');
+  }
+
+  @Post('rewards/boosts/bulk-revoke')
+  async bulkRevokeRewardBoosts(@Body() body: { boostIds: string[] }) {
+    return this.premiumBonus.bulkRevokeBoosts(body.boostIds || [], 'admin-user-id');
+  }
+
+  @Get('rewards/audit')
+  async getRewardAuditTrail(@Query('limit') limit = '500') {
+    const parsed = Math.max(1, Math.min(2000, Number(limit) || 500));
+    return this.rewardAnalytics.getAuditTrail(parsed);
   }
 
   /**

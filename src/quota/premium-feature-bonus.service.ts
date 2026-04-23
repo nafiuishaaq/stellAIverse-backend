@@ -16,6 +16,7 @@ export interface PremiumBoost {
   id: string;
   userId: string;
   feature: string;
+  campaignId?: string;
   bonusMultiplier: number;
   extraLimit: number;
   extraBurst: number;
@@ -54,6 +55,7 @@ export interface PremiumAdjustment {
 }
 
 export interface BonusUsageEvent {
+  timestamp?: Date;
   userId: string;
   userTier: string;
   endpoint: string;
@@ -72,6 +74,8 @@ export interface BonusOperationLog {
     | "policy_update"
     | "boost_allocated"
     | "boost_revoked"
+    | "bulk_boost_allocate"
+    | "bulk_boost_revoke"
     | "emergency_toggle"
     | "pool_reset";
   actor: string;
@@ -289,6 +293,7 @@ export class PremiumFeatureBonusService {
   recordUsage(event: BonusUsageEvent): void {
     this.usageEvents.push({
       ...event,
+      timestamp: event.timestamp || new Date(),
       adjustment: {
         ...event.adjustment,
         reasons: [...event.adjustment.reasons],
@@ -378,6 +383,7 @@ export class PremiumFeatureBonusService {
   allocateBoost(input: {
     userId: string;
     feature: string;
+    campaignId?: string;
     bonusMultiplier?: number;
     extraLimit?: number;
     extraBurst?: number;
@@ -405,6 +411,7 @@ export class PremiumFeatureBonusService {
       id: `boost_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       userId: input.userId,
       feature,
+      campaignId: input.campaignId,
       bonusMultiplier: this.clamp(Number(input.bonusMultiplier ?? 0), 0, 1.5),
       extraLimit: this.clampInt(Number(input.extraLimit ?? 0), 0, 500_000),
       extraBurst: this.clampInt(Number(input.extraBurst ?? 0), 0, 100_000),
@@ -432,6 +439,7 @@ export class PremiumFeatureBonusService {
       userId: input.userId,
       details: {
         boostId: boost.id,
+        campaignId: boost.campaignId,
         source: boost.source,
         expiresAt: boost.expiresAt.toISOString(),
       },
@@ -479,6 +487,91 @@ export class PremiumFeatureBonusService {
       : Array.from(this.boostsByUser.values()).flat();
 
     return [...rows].sort((a, b) => b.expiresAt.getTime() - a.expiresAt.getTime());
+  }
+
+  bulkAllocateBoosts(
+    items: Array<{
+      userId: string;
+      feature: string;
+      campaignId?: string;
+      bonusMultiplier?: number;
+      extraLimit?: number;
+      extraBurst?: number;
+      durationMinutes: number;
+      source?: PremiumBoost["source"];
+      reason?: string;
+    }>,
+    actor = "system",
+  ) {
+    const successes: PremiumBoost[] = [];
+    const failures: Array<{ userId: string; feature: string; error: string }> = [];
+
+    for (const item of items) {
+      try {
+        const allocated = this.allocateBoost({
+          ...item,
+          actor,
+        });
+        successes.push(allocated);
+      } catch (error) {
+        failures.push({
+          userId: item.userId,
+          feature: item.feature,
+          error: error.message,
+        });
+      }
+    }
+
+    this.pushOperation({
+      type: "bulk_boost_allocate",
+      actor,
+      details: {
+        total: items.length,
+        succeeded: successes.length,
+        failed: failures.length,
+      },
+    });
+
+    return {
+      total: items.length,
+      succeeded: successes.length,
+      failed: failures.length,
+      boosts: successes,
+      failures,
+    };
+  }
+
+  bulkRevokeBoosts(boostIds: string[], actor = "system") {
+    const results = boostIds.map((boostId) => this.revokeBoost(boostId, actor));
+    const removed = results.filter((entry) => entry.removed).length;
+
+    this.pushOperation({
+      type: "bulk_boost_revoke",
+      actor,
+      details: {
+        total: boostIds.length,
+        removed,
+      },
+    });
+
+    return {
+      total: boostIds.length,
+      removed,
+      results,
+    };
+  }
+
+  getUsageEvents(limit = 1_000, anonymize = true) {
+    const rows = this.usageEvents.slice(-Math.max(1, Math.min(50_000, limit)));
+
+    if (!anonymize) {
+      return rows;
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      userId: this.anonymize(row.userId),
+    }));
   }
 
   getPoolStatus() {
@@ -772,5 +865,14 @@ export class PremiumFeatureBonusService {
 
   private clampInt(value: number, min: number, max: number): number {
     return Math.floor(this.clamp(value, min, max));
+  }
+
+  private anonymize(value: string): string {
+    let hash = 0;
+    for (let i = 0; i < value.length; i += 1) {
+      hash = (hash << 5) - hash + value.charCodeAt(i);
+      hash |= 0;
+    }
+    return `u_${Math.abs(hash).toString(16)}`;
   }
 }
