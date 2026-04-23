@@ -4,9 +4,12 @@ import {
   Injectable,
   HttpException,
   HttpStatus,
+  Optional,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { RateLimiterService } from "../../quota/rate-limiter.service";
+import { AnalyticsDashboardService } from "../../observability/analytics-dashboard.service";
+import { MetricsService } from "../../observability/metrics.service";
 import {
   RATE_LIMIT_KEY,
   RateLimitOptions,
@@ -18,6 +21,8 @@ export class QuotaGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly rateLimiterService: RateLimiterService,
+    @Optional() private readonly analytics?: AnalyticsDashboardService,
+    @Optional() private readonly metrics?: MetricsService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -35,9 +40,22 @@ export class QuotaGuard implements CanActivate {
 
     // Merge options with level config
     const levelConfig = QUOTA_LEVELS[options.level || "free"] || DEFAULT_QUOTA;
-    const limit = options.limit ?? levelConfig.limit;
-    const windowMs = options.windowMs ?? levelConfig.windowMs;
-    const burst = options.burst ?? levelConfig.burst;
+    const baseLimit = options.limit ?? levelConfig.limit;
+    const baseWindowMs = options.windowMs ?? levelConfig.windowMs;
+    const baseBurst = options.burst ?? levelConfig.burst;
+
+    const control = this.analytics?.getEffectiveControl(
+      request.user?.id,
+      baseLimit,
+      baseWindowMs,
+      baseBurst,
+    );
+
+    const limit = control?.limit ?? baseLimit;
+    const windowMs = control?.windowMs ?? baseWindowMs;
+    const burst = control?.burst ?? baseBurst;
+
+    const startedAt = Date.now();
 
     const result = await this.rateLimiterService.checkQuota(
       trackerKey,
@@ -45,6 +63,52 @@ export class QuotaGuard implements CanActivate {
       windowMs,
       burst,
     );
+
+    const decisionMs = Date.now() - startedAt;
+    const endpoint = request.route?.path || request.originalUrl || request.url || "unknown";
+    const userId = request.user?.id || trackerKey;
+    const userTier = request.user?.tier || options.level || "unknown";
+    const policy = options.level || "custom";
+
+    this.metrics?.rateLimitHits.inc({ policy, user_tier: userTier, endpoint });
+    this.metrics?.rateLimitCurrentUsage.set(
+      {
+        policy,
+        user_id: String(userId),
+        endpoint,
+      },
+      Math.max(0, limit - result.remaining),
+    );
+    this.metrics?.rateLimitResetTime.set(
+      {
+        policy,
+        user_id: String(userId),
+        endpoint,
+      },
+      Date.now() + result.resetMs,
+    );
+
+    if (!result.allowed) {
+      this.metrics?.rateLimitExceeded.inc({ policy, user_tier: userTier, endpoint });
+      this.metrics?.throttlingEvents.inc({
+        severity: result.remaining <= 0 ? "high" : "medium",
+        policy,
+        user_tier: userTier,
+      });
+    }
+
+    this.analytics?.recordRateLimitDecision({
+      key: trackerKey,
+      userId: String(userId),
+      endpoint,
+      policy,
+      userTier: String(userTier),
+      allowed: result.allowed,
+      remaining: result.remaining,
+      limit,
+      resetMs: result.resetMs,
+      decisionMs,
+    });
 
     const response = context.switchToHttp().getResponse();
 

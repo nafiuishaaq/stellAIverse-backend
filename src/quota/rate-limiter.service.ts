@@ -79,6 +79,42 @@ export class RateLimiterService implements OnModuleDestroy {
     };
   }
 
+  /**
+   * Backwards compatible quota check used by decorators/guards.
+   * Uses token bucket as default and fails open when Redis is unavailable.
+   */
+  async checkQuota(
+    key: string,
+    limit: number,
+    windowMs: number,
+    burst: number = 0,
+    requested: number = 1,
+  ): Promise<QuotaResult> {
+    try {
+      const algorithm = this.algorithms.get(RateLimitAlgorithmType.TOKEN_BUCKET);
+      const result = await algorithm.checkRateLimit(key, limit, windowMs, burst);
+
+      // Legacy endpoints may pass requested=0 to inspect usage without consume.
+      // Token bucket cannot do true zero-cost checks without extra redis calls,
+      // so we compensate the displayed remaining value.
+      const compensatedRemaining =
+        requested === 0 ? Math.min(limit + burst, result.remaining + 1) : result.remaining;
+
+      return {
+        allowed: result.allowed,
+        remaining: compensatedRemaining,
+        resetMs: result.resetMs,
+      };
+    } catch (error) {
+      this.logger.error(`Rate limit check failed for key ${key}: ${error.message}`);
+      return {
+        allowed: true,
+        remaining: limit,
+        resetMs: windowMs,
+      };
+    }
+  }
+
   async onModuleDestroy() {
     await this.redis.quit();
   }

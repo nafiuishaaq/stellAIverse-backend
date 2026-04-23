@@ -2,6 +2,9 @@ import {
   Controller,
   Get,
   Post,
+  Put,
+  Delete,
+  Body,
   Query,
   Param,
   UseGuards,
@@ -11,7 +14,7 @@ import {
 import { RolesGuard } from '../common/guard/roles.guard';
 import { Roles } from '../common/guard/roles.decorator';
 import { UserRole } from '../user/entities/user.entity';
-import { AnalyticsDashboardService } from './analytics-dashboard.service';
+import { AlertRule, AnalyticsDashboardService } from './analytics-dashboard.service';
 import { MetricsService } from './metrics.service';
 
 @Controller('admin/analytics')
@@ -42,9 +45,10 @@ export class AnalyticsDashboardController {
   async getHistoricalTrends(
     @Query('metric') metric: string,
     @Query('granularity') granularity: 'hour' | 'day' | 'week' = 'day',
-    @Query('days') days = 30,
+    @Query('days') days = '30',
   ) {
-    return this.analytics.getHistoricalTrends(metric, granularity, days);
+    const parsedDays = Math.max(1, Math.min(365, Number(days) || 30));
+    return this.analytics.getHistoricalTrends(metric || 'hits', granularity, parsedDays);
   }
 
   /**
@@ -54,9 +58,10 @@ export class AnalyticsDashboardController {
   async getUserAnalytics(
     @Query('userId') userId?: string,
     @Query('segment') segment?: string,
-    @Query('limit') limit = 100,
+    @Query('limit') limit = '100',
   ) {
-    return this.analytics.getUserAnalytics(userId, segment, limit);
+    const parsedLimit = Math.max(1, Math.min(1000, Number(limit) || 100));
+    return this.analytics.getUserAnalytics(userId, segment, parsedLimit);
   }
 
   /**
@@ -73,10 +78,47 @@ export class AnalyticsDashboardController {
   @Get('alerts')
   async getAlerts(
     @Query('severity') severity?: 'low' | 'medium' | 'high' | 'critical',
-    @Query('acknowledged') acknowledged?: boolean,
+    @Query('acknowledged') acknowledged?: string,
   ) {
-    const ack = acknowledged ? acknowledged === 'true' : undefined;
+    const ack =
+      typeof acknowledged === 'string'
+        ? acknowledged.toLowerCase() === 'true'
+        : undefined;
     return this.analytics.getAlerts(severity, ack);
+  }
+
+  @Get('alerts/summary')
+  async getAlertSummary() {
+    return this.analytics.getAlertSummary();
+  }
+
+  @Get('alerts/rules')
+  async getAlertRules() {
+    return this.analytics.getAlertRules();
+  }
+
+  @Put('alerts/rules/:id')
+  async upsertAlertRule(
+    @Param('id') id: string,
+    @Body() body: Partial<AlertRule>,
+  ) {
+    const current = this.analytics.getAlertRules().find((rule) => rule.id === id);
+
+    const merged: AlertRule = {
+      id,
+      name: body.name || current?.name || id,
+      enabled: body.enabled ?? current?.enabled ?? true,
+      metric: body.metric || current?.metric || 'throughput',
+      threshold: Number(body.threshold ?? current?.threshold ?? 100),
+      windowMinutes: Number(body.windowMinutes ?? current?.windowMinutes ?? 5),
+      severity: body.severity || current?.severity || 'medium',
+      channels: body.channels || current?.channels || ['log'],
+      escalationMinutes: Number(
+        body.escalationMinutes ?? current?.escalationMinutes ?? 15,
+      ),
+    };
+
+    return this.analytics.upsertAlertRule(merged);
   }
 
   /**
@@ -156,12 +198,77 @@ export class AnalyticsDashboardController {
    */
   @Post('export')
   @HttpCode(HttpStatus.ACCEPTED)
-  async exportData(@Query('type') type: string, @Query('format') format: 'csv' | 'json' = 'json') {
-    // Implementation would queue export job
+  async exportData(
+    @Query('type') type: 'metrics' | 'alerts' | 'users' = 'metrics',
+    @Query('format') format: 'csv' | 'json' = 'json',
+    @Query('timeRange') timeRange: '1h' | '24h' | '7d' = '24h',
+  ) {
+    const payload = await this.analytics.buildExport(type, format, timeRange);
     return {
-      message: 'Export job queued',
-      jobId: `export_${Date.now()}`,
-      estimatedTime: '5 minutes',
+      generatedAt: new Date(),
+      type,
+      format,
+      payload,
+    };
+  }
+
+  @Get('emergency-mode')
+  async getEmergencyMode() {
+    return this.analytics.getEmergencyMode();
+  }
+
+  @Post('emergency-mode')
+  async setEmergencyMode(
+    @Body()
+    body: {
+      enabled: boolean;
+      limitMultiplier?: number;
+      reason?: string;
+    },
+  ) {
+    const adminId = 'admin-user-id';
+    return this.analytics.setEmergencyMode(
+      Boolean(body.enabled),
+      Number(body.limitMultiplier ?? 1),
+      body.reason || 'manual update',
+      adminId,
+    );
+  }
+
+  @Get('user-overrides')
+  async getUserOverrides() {
+    return this.analytics.listUserOverrides();
+  }
+
+  @Post('user-overrides/:userId')
+  async setUserOverride(
+    @Param('userId') userId: string,
+    @Body()
+    body: {
+      limit: number;
+      windowMs: number;
+      burst?: number;
+      reason?: string;
+      expiresAt?: string;
+    },
+  ) {
+    const adminId = 'admin-user-id';
+    return this.analytics.setUserOverride({
+      userId,
+      limit: Number(body.limit),
+      windowMs: Number(body.windowMs),
+      burst: Number(body.burst ?? 0),
+      reason: body.reason,
+      expiresAt: body.expiresAt ? new Date(body.expiresAt) : undefined,
+      adminId,
+    });
+  }
+
+  @Delete('user-overrides/:userId')
+  async deleteUserOverride(@Param('userId') userId: string) {
+    return {
+      removed: this.analytics.removeUserOverride(userId),
+      userId,
     };
   }
 
