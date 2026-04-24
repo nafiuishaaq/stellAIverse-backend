@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigService } from "@nestjs/config";
 import { RateLimiterService } from "./rate-limiter.service";
+import { PolicyService } from "./policy.service";
 import Redis from "ioredis";
 
 jest.mock("ioredis");
@@ -24,6 +25,12 @@ describe("RateLimiterService", () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn().mockReturnValue("redis://localhost:6379"),
+          },
+        },
+        {
+          provide: PolicyService,
+          useValue: {
+            getApplicablePolicy: jest.fn(),
           },
         },
       ],
