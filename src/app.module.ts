@@ -180,6 +180,11 @@ import { QuotaPolicy } from "./quota/policy.entity";
       provide: APP_GUARD,
       useClass: QuotaGuard,
     },
+    // Apply RBAC globally — no implicit trust for any method
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
   ],
 })
 export class AppModule implements OnModuleInit {
