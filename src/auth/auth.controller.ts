@@ -33,6 +33,7 @@ import { LinkWalletDto } from "./dto/link-wallet.dto";
 import { UnlinkWalletDto } from "./dto/unlink-wallet.dto";
 import { RecoverWalletDto } from "./dto/recover-wallet.dto";
 import { Throttle } from "@nestjs/throttler";
+import { SensitiveRateLimit } from "../common/decorators/rate-limit.decorator";
 import { Roles, Role } from "../common/decorators/roles.decorator";
 import { RolesGuard } from "../common/guard/roles.guard";
 
@@ -61,6 +62,8 @@ export class VerifySignatureDto {
   signature: string;
 }
 
+// Auth endpoints are high-value targets — enforce strict per-user/IP limit: 5 req/min
+@SensitiveRateLimit('auth')
 @ApiTags("Authentication")
 @Throttle({ default: { ttl: 60000, limit: 10 } })
 @Controller("auth")
