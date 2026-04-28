@@ -39,6 +39,9 @@ export class AgentTelemetryGateway
   server: Server;
 
   private readonly logger = new Logger(AgentTelemetryGateway.name);
+  private readonly connectionTimeouts = new Map<string, NodeJS.Timeout>();
+  private static readonly MAX_CONNECTIONS = 500;
+  private static readonly IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(
     private readonly telemetryService: AgentTelemetryService,
@@ -46,8 +49,18 @@ export class AgentTelemetryGateway
   ) {}
 
   async handleConnection(client: AuthenticatedSocket) {
+    const connectedCount = (await this.server?.sockets?.fetchSockets())?.length ?? 0;
+    if (connectedCount >= AgentTelemetryGateway.MAX_CONNECTIONS) {
+      this.logger.warn(`Max connections reached, rejecting client ${client.id}`);
+      client.disconnect(true);
+      return;
+    }
+
     this.logger.log(`Client connected to telemetry: ${client.id}`);
     client.filters = new Map();
+
+    // Set idle timeout — disconnect if no activity within IDLE_TIMEOUT_MS
+    this.resetIdleTimeout(client);
 
     // Welcome message
     client.emit("telemetry:welcome", {
@@ -58,6 +71,26 @@ export class AgentTelemetryGateway
 
   async handleDisconnect(client: AuthenticatedSocket) {
     this.logger.log(`Client disconnected from telemetry: ${client.id}`);
+    // Clear idle timeout to prevent memory leak
+    const timeout = this.connectionTimeouts.get(client.id);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.connectionTimeouts.delete(client.id);
+    }
+    // Clear filters map
+    client.filters?.clear();
+  }
+
+  private resetIdleTimeout(client: AuthenticatedSocket) {
+    const existing = this.connectionTimeouts.get(client.id);
+    if (existing) clearTimeout(existing);
+
+    const timeout = setTimeout(() => {
+      this.logger.log(`Disconnecting idle client: ${client.id}`);
+      client.disconnect(true);
+    }, AgentTelemetryGateway.IDLE_TIMEOUT_MS);
+
+    this.connectionTimeouts.set(client.id, timeout);
   }
 
   @UseGuards(WebSocketAuthGuard)
@@ -66,6 +99,7 @@ export class AgentTelemetryGateway
     @ConnectedSocket() client: AuthenticatedSocket,
     @MessageBody() filter: TelemetryFilter,
   ) {
+    this.resetIdleTimeout(client);
     try {
       // Fetch user role for RBAC
       if (!client.role && client.userId) {
@@ -122,6 +156,7 @@ export class AgentTelemetryGateway
     @ConnectedSocket() client: AuthenticatedSocket,
     @MessageBody() data: { agentId?: string },
   ) {
+    this.resetIdleTimeout(client);
     const subscriptionId = data.agentId || "all";
     client.filters.delete(subscriptionId);
 

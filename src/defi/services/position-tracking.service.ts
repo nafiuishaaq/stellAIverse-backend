@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import BigNumber from "bignumber.js";
 import {
   DeFiPosition,
   PositionStatus,
@@ -65,22 +66,28 @@ export class PositionTrackingService {
       relations: ["yield_records", "transactions"],
     });
 
-    const totalValue = positions.reduce((sum, p) => sum + p.current_amount, 0);
+    const totalValue = positions
+      .reduce((sum, p) => sum.plus(new BigNumber(p.current_amount ?? 0)), new BigNumber(0))
+      .toNumber();
     const totalCollateral = positions
       .filter((p) => p.collateral_amount)
-      .reduce((sum, p) => sum + p.collateral_amount, 0);
+      .reduce((sum, p) => sum.plus(new BigNumber(p.collateral_amount ?? 0)), new BigNumber(0))
+      .toNumber();
     const totalBorrowed = positions
       .filter((p) => p.borrowed_amount)
-      .reduce((sum, p) => sum + p.borrowed_amount, 0);
-    const netValue = totalCollateral - totalBorrowed;
+      .reduce((sum, p) => sum.plus(new BigNumber(p.borrowed_amount ?? 0)), new BigNumber(0))
+      .toNumber();
+    const netValue = new BigNumber(totalCollateral).minus(totalBorrowed).toNumber();
 
-    const totalYield = positions.reduce(
-      (sum, p) => sum + p.accumulated_yield,
-      0,
-    );
+    const totalYield = positions
+      .reduce((sum, p) => sum.plus(new BigNumber(p.accumulated_yield ?? 0)), new BigNumber(0))
+      .toNumber();
     const averageAPY =
       positions.length > 0
-        ? positions.reduce((sum, p) => sum + p.apy, 0) / positions.length
+        ? positions
+            .reduce((sum, p) => sum.plus(new BigNumber(p.apy ?? 0)), new BigNumber(0))
+            .dividedBy(positions.length)
+            .toNumber()
         : 0;
 
     // Group by protocol
@@ -89,22 +96,25 @@ export class PositionTrackingService {
       if (!byProtocol[position.protocol]) {
         byProtocol[position.protocol] = {
           count: 0,
-          totalValue: 0,
-          totalYield: 0,
+          totalValue: new BigNumber(0),
+          totalYield: new BigNumber(0),
           averageAPY: 0,
         };
       }
       byProtocol[position.protocol].count++;
-      byProtocol[position.protocol].totalValue += position.current_amount;
-      byProtocol[position.protocol].totalYield += position.accumulated_yield;
+      byProtocol[position.protocol].totalValue = byProtocol[position.protocol].totalValue.plus(new BigNumber(position.current_amount ?? 0));
+      byProtocol[position.protocol].totalYield = byProtocol[position.protocol].totalYield.plus(new BigNumber(position.accumulated_yield ?? 0));
     }
 
-    // Recalculate averages
+    // Recalculate averages and convert BigNumber to number
     for (const protocol in byProtocol) {
-      byProtocol[protocol].averageAPY =
-        byProtocol[protocol].count > 0
-          ? byProtocol[protocol].totalYield / byProtocol[protocol].totalValue
+      const pData = byProtocol[protocol];
+      pData.averageAPY =
+        pData.count > 0 && pData.totalValue.isGreaterThan(0)
+          ? pData.totalYield.dividedBy(pData.totalValue).toNumber()
           : 0;
+      pData.totalValue = pData.totalValue.toNumber();
+      pData.totalYield = pData.totalYield.toNumber();
     }
 
     // Group by type
