@@ -144,7 +144,12 @@ import { QuotaPolicy } from "./quota/policy.entity";
     }),
 
     ThrottlerModule.forRoot({
-      throttlers: [{ name: "global", ttl: 60_000, limit: 100 }],
+      throttlers: [
+        { name: 'global',  ttl: 60_000, limit: 100 },
+        { name: 'auth',    ttl: 60_000, limit: 5   },
+        { name: 'trading', ttl: 60_000, limit: 20  },
+        { name: 'oracle',  ttl: 60_000, limit: 10  },
+      ],
     }),
 
     AuthModule,
@@ -180,9 +185,12 @@ import { QuotaPolicy } from "./quota/policy.entity";
     AppService,
     {
       provide: APP_GUARD,
+      useClass: ThrottlerUserIpGuard,
+    },
+    {
+      provide: APP_GUARD,
       useClass: QuotaGuard,
     },
-    // Apply RBAC globally — no implicit trust for any method
     {
       provide: APP_GUARD,
       useClass: RolesGuard,

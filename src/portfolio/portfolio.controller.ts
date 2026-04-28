@@ -14,6 +14,7 @@ import {
   HttpStatus,
 } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
+import { Throttle } from "@nestjs/throttler";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { PortfolioService } from "../services/portfolio.service";
 import { RebalancingService } from "../services/rebalancing.service";
@@ -41,6 +42,7 @@ import { GetPerformanceMetricsDto } from "../dto/performance.dto";
 @ApiTags("Portfolio Optimization")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
+@Throttle({ trading: { ttl: 60_000, limit: 20 } })
 export class PortfolioController {
   constructor(
     private portfolioService: PortfolioService,

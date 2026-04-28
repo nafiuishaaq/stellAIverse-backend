@@ -4,6 +4,8 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 import * as helmet from "helmet";
 import { logger } from "./config/logger";
+import { GlobalExceptionFilter } from "./common/filters/global-exception.filter";
+import { SanitizePipe } from "./common/pipes/sanitize.pipe";
 
 async function bootstrap() {
   // Initialize tracing safely
@@ -45,6 +47,8 @@ async function bootstrap() {
   // Global configuration
   app.setGlobalPrefix("api/v1");
   app.useGlobalPipes(
+    // Sanitize first to strip XSS payloads before validation
+    new SanitizePipe(),
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,

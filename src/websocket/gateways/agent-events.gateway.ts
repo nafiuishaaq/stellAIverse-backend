@@ -33,6 +33,9 @@ export class AgentEventsGateway
   server: Server;
 
   private readonly logger = new Logger(AgentEventsGateway.name);
+  private readonly connectionTimeouts = new Map<string, NodeJS.Timeout>();
+  private static readonly MAX_CONNECTIONS = 1000;
+  private static readonly IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
   constructor(
     private readonly subscriptionService: SubscriptionService,
@@ -43,7 +46,13 @@ export class AgentEventsGateway
   async handleConnection(client: AuthenticatedSocket) {
     this.logger.log(`Client attempting connection: ${client.id}`);
 
-    // Auth will be handled by guard, but we log connection attempt
+    const connectedCount = (await this.server?.sockets?.fetchSockets())?.length ?? 0;
+    if (connectedCount >= AgentEventsGateway.MAX_CONNECTIONS) {
+      this.logger.warn(`Max connections reached, rejecting client ${client.id}`);
+      client.disconnect(true);
+      return;
+    }
+
     try {
       const token =
         client.handshake.auth.token || client.handshake.headers.authorization;
@@ -54,8 +63,8 @@ export class AgentEventsGateway
       }
 
       this.logger.log(`Client connected: ${client.id}`);
+      this.resetIdleTimeout(client);
 
-      // Send welcome message
       client.emit("connection:success", {
         clientId: client.id,
         timestamp: new Date().toISOString(),
@@ -70,11 +79,29 @@ export class AgentEventsGateway
   async handleDisconnect(client: AuthenticatedSocket) {
     this.logger.log(`Client disconnected: ${client.id}`);
 
+    const timeout = this.connectionTimeouts.get(client.id);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.connectionTimeouts.delete(client.id);
+    }
+
     // Clean up subscriptions
     await this.subscriptionService.removeAllSubscriptions(client.id);
 
     // Stop heartbeat monitoring
     this.heartbeatService.stopMonitoring(client.id);
+  }
+
+  private resetIdleTimeout(client: AuthenticatedSocket) {
+    const existing = this.connectionTimeouts.get(client.id);
+    if (existing) clearTimeout(existing);
+
+    const timeout = setTimeout(() => {
+      this.logger.log(`Disconnecting idle client: ${client.id}`);
+      client.disconnect(true);
+    }, AgentEventsGateway.IDLE_TIMEOUT_MS);
+
+    this.connectionTimeouts.set(client.id, timeout);
   }
 
   @UseGuards(WebSocketAuthGuard)
