@@ -7,6 +7,8 @@ import { sign } from "jsonwebtoken";
 import { KycGuard } from "../src/common/guard/kyc.guard";
 import { SkipKyc } from "../src/common/decorators/skip-kyc.decorator";
 import { ComplianceService } from "../src/compliance/compliance.service";
+import { AppModule } from "../src/app.module";
+import { Reflector } from "@nestjs/core";
 
 class JwtAuthGuard implements CanActivate {
   canActivate(): boolean {
@@ -117,5 +119,58 @@ describe("KycGuard (e2e)", () => {
       .post("/kyc-guard/bootstrap")
       .set("Authorization", `Bearer ${token}`)
       .expect(201);
+  });
+
+  it('should block non-KYC users from secure routes', async () => {
+    const token = makeToken('unverified-user');
+
+    const response = await request(app.getHttpServer())
+      .get('/kyc-guard/secure')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(403);
+  });
+
+  it('should allow KYC-verified users to access secure routes', async () => {
+    complianceService.getKycStatus.mockReturnValueOnce(true);
+    const token = makeToken('verified-user');
+
+    const response = await request(app.getHttpServer())
+      .get('/kyc-guard/secure')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+  });
+
+  // E2E tests for the KycGuard to verify blocking non-KYC users, allowing KYC-verified users, and respecting @SkipKyc decorator.
+  it('should block access to sensitive endpoints for non-KYC users', async () => {
+    mockUser.kycVerified = false;
+
+    const response = await request(app.getHttpServer())
+      .get('/sensitive-endpoint')
+      .expect(403);
+
+    expect(response.body.message).toBe('Forbidden resource');
+  });
+
+  it('should allow access to sensitive endpoints for KYC-verified users', async () => {
+    mockUser.kycVerified = true;
+
+    const response = await request(app.getHttpServer())
+      .get('/sensitive-endpoint')
+      .expect(200);
+
+    expect(response.body).toEqual(expect.any(Object));
+  });
+
+  it('should allow access to @SkipKyc() endpoints without KYC', async () => {
+    mockUser.kycVerified = false;
+
+    const response = await request(app.getHttpServer())
+      .get('/skip-kyc-endpoint')
+      .expect(200);
+
+    expect(response.body).toEqual(expect.any(Object));
   });
 });
