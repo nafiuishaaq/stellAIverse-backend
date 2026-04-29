@@ -5,6 +5,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { ConfigModule } from "@nestjs/config";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
+import { EnhancedAuthService } from "./enhanced-auth.service";
 import { ChallengeService } from "./challenge.service";
 import { JwtStrategy } from "./jwt.strategy";
 import { JwtAuthGuard } from "./jwt.guard";
@@ -49,6 +50,8 @@ import { ReferralModule } from "../referral/referral.module";
     RecoveryService,
     SessionRecoveryService,
     DelegationService,
+    // New enhanced services
+    EnhancedAuthService,
     JwtStrategy,
     JwtAuthGuard,
     // New pluggable strategy system
